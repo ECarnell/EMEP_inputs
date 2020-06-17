@@ -1,10 +1,11 @@
 setwd("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS")
 
-source("./LL_Emissions_model/src/workspace.R")
+
 
 setwd("C:/FastProcessingSam/Git_repos/EMEP_inputs")
 
 source("./workspace.R")
+source("./emissions_functions.R")
 
 
 ###########################################################
@@ -29,14 +30,23 @@ uk.latlon.grid <- raster(xmn = -13.6, xmx = 3.6, ymn = 49.5, ymx = 61.1, res = 0
 mask <- crop(extend(disaggregate(raster("Emissions_mask.tif"), fact=10), uk.latlon.grid), uk.latlon.grid)
 
 ### CHOOSE WHICH YEARS AND WHICH POLLUTANTS/GHGS TO PUT IN THE NETCDF ###
-years <- 2017
-pollutants <- c("nox")
+years <- 2016
+pollutants <- c("nox","sox")
+mapping.yr <- 2017 # i.e. what year is the NAEI spatial distribution for the data
 
 #### PROCESSING ####
 
-# 1. Take the UK NAEI emissions, converted to LL, and convert from SNAP sector to GNFR classification
+# 1. Take the UK NAEI emissions in Lat Long and;
+        #  i) combine the point and diffuse data as required for the model 
+        # ii) convert from SNAP sector to GNFR classification
 
+reclassified.data <- NAEI.LL.to.GNFR(years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr)
 
+# 2. Check if the netcdf exists and if it does, whether to insert new data or leave
+reclassified.data.adj <- check.netcdf.status(reclassified.data = reclassified.data, years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr)
+
+# 3. Using the newly classified GNFR data, place into a netcdf (either existing or new)
+input.to.netcdf(reclassified.data = reclassified.data, years = years, pollutants = pollutants, mapping.yr = mapping.yr)
 
 
 ########################################
@@ -62,85 +72,11 @@ names(st)
 
 
 
-# my netcdf
-filename = paste0("test_uk_ncdf_2017.nc")
-
-# generate lons, lats and set time
-lonvals <- as.array(seq(-13.595,3.595,0.01))
-nlon <- length(lonvals)
-latvals <- as.array(seq(49.505,61.095,0.01))
-nlat <- length(latvals)
-
-#secvals <- as.array(1:11)
-secvals <- 1:11
-nsecs <- length(secvals)
-
-timevals <- 1
-ntime <- 1
-
-
-# create dims
-dimlon <- ncdim_def(name = "lon", longname= "longitude", units = "degrees", vals = lonvals)
-dimlat <- ncdim_def(name = "lat", longname= "latitude", units = "degrees", vals = latvals)
-dimtime <- ncdim_def(name = "time", longname = "years since 2017", units = "years", vals = timevals)
-dimsecs <- ncdim_def(name = "sectors", longname = "emission SNAP sectors", units = "SNAP number", vals = secvals)
-
-# data array
-a <- array(flip(st,2), dim = c(nlon, nlat, ntime, nsecs ))
-
-
-
-# create variables
-fillvalue <- -9999
-
-nox_def <- ncvar_def(name = "nox", 
-                     units = "Mg cell-1 yr-1", 
-                     dim = list(dimlon,dimlat,dimtime,dimsecs), 
-                     missval = fillvalue,
-                     longname = "nox emissions for UK terrestrial domain",
-                     prec = "float",
-                     compression=4)
-
-
-vars <- list(nox_def)
-
-ncnew <- nc_create(filename, vars)
-
-ncvar_put(ncnew, nox_def, a) 
-
-
-
-ncatt_put(ncnew,"sectors","SNAP names","1: energy; 2: domestic; 3: ind; 4: proc; 5: solv; 6: fugi; 7: road; 8: trans; 9: waste; 10: agri; 11: other")
-ncatt_put(ncnew,"lon","axis","X") #,verbose=FALSE) #,definemode=FALSE)
-ncatt_put(ncnew,"lat","axis","Y")
-ncatt_put(ncnew,"time","axis","T")
-#ncatt_put(ncnew,"sectors","snap_names",letters[1:11], prec="char")
-
-
-
-ncatt_put(ncnew, 0, "Conventions","CF-1.0", prec="char")
-ncatt_put(ncnew, 0, "projection","WGS84", prec="char")
-ncatt_put(ncnew, 0, "Grid_resolution", "0.01", prec="char")
-ncatt_put(ncnew, 0, "Created_with", R.Version()$version.string, prec="char")
-ncatt_put(ncnew, 0, "ncdf4_version", packageDescription("ncdf4")$Version, prec="char")
-ncatt_put(ncnew, 0,"Created_by","Sam Tomlinson samtom@ceh.ac.uk", prec="char")
-ncatt_put(ncnew, 0, "Created_date", as.character(Sys.time()), prec="char")
-ncatt_put(ncnew, 0, "Sector_names", "GNFR", prec="char")
-
-#zr <- lapply(X = v_lkup$Sect,function(x){
-#  ncatt_put(ncnew,0,x,v_lkup[Sect == x, Desc],prec="char")})
-
-
-
-nc_close(ncnew)
-
-
-
 
 #####
 
 
-ncfile <- "test_uk_ncdf_nox_2017.nc"
+ncfile <- paste0("C:/FastProcessingSam/EMEP_new_grid/EMEP4UK_UKems_",year,"_0.01.nc")
 nc <- nc_open(ncfile)
 
 names(nc$var)
@@ -157,6 +93,6 @@ ncatt_get()
 
 nc$dim$sectors
 
-ncatt_get(nc, "sectors", "SNAP names")$value
+ncatt_get(nc, "sectors", "GNFR names")$value
 
 nc_close(nc)

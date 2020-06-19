@@ -2,10 +2,9 @@ setwd("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112
 
 
 
-setwd("C:/FastProcessingSam/Git_repos/EMEP_inputs")
 
-source("./workspace.R")
-source("./emissions_functions.R")
+source("C:/FastProcessingSam/Git_repos/EMEP_inputs/workspace.R")
+source("C:/FastProcessingSam/Git_repos/EMEP_inputs/emissions_functions.R")
 
 
 ###########################################################
@@ -20,30 +19,34 @@ source("./emissions_functions.R")
 
 
 # coordinate reference systems required #
-LL <- CRS("+init=epsg:4326") # For EMEP European data
+LL <<- CRS("+init=epsg:4326") # For EMEP European data
+BNG <<- CRS("+init=epsg:27700")  # NAEI data in British National Grid
 
 # This is the lat long equivalent raster of the UK domain at 1km in BNG
-uk.latlon.grid <- raster(xmn = -13.6, xmx = 3.6, ymn = 49.5, ymx = 61.1, res = 0.01, crs = LL, vals = NA)
+uk.latlon.grid <- raster(xmn = -13.8, xmx = 4.6, ymn = 49, ymx = 61.5, res = 0.01, crs = LL, vals = NA)
 
-# mask the UK emissions data to terrestrial (plus some coastal cells) - Massimo wants EMEP emissions data on the sea
+# the emissions need to be masked to terrestrial cells (plus some coastal cells) - Massimo wants EMEP emissions data on the sea
 # the mask is in 0.1 degree, disaggregate to 0.01 so masking can be done
 mask <- crop(extend(disaggregate(raster("Emissions_mask.tif"), fact=10), uk.latlon.grid), uk.latlon.grid)
 
 ### CHOOSE WHICH YEARS AND WHICH POLLUTANTS/GHGS TO PUT IN THE NETCDF ###
 years <- 2016
-pollutants <- c("nox","sox")
+pollutants <- c("nox")
 mapping.yr <- 2017 # i.e. what year is the NAEI spatial distribution for the data
+region <- "ukeire" # 'uk' = UK only, 'eire' = Eire only, 'ukeire' = UK and Eire combined
+class <- "GNFR" # Sector classification system: 'SNAP' or 'GNFR'
+
 
 #### PROCESSING ####
 
-# 1. Take the UK NAEI emissions in Lat Long and;
-        #  i) combine the point and diffuse data as required for the model 
-        # ii) convert from SNAP sector to GNFR classification
+# 1. Take the regions emissions in Lat Long and;
+       #   i) convert point emissions (.csv) into a raster
+       #  ii) combine the points with the diffuse (.tif) data as required for the model 
 
-reclassified.data <- NAEI.LL.to.GNFR(years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr)
+pt.diff.data <- combine.all.region.data(years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr, class = class, region = region)
 
 # 2. Check if the netcdf exists and if it does, whether to insert new data or leave
-reclassified.data.adj <- check.netcdf.status(reclassified.data = reclassified.data, years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr)
+xxxxxxxx <- check.netcdf.status(pt.diff.data = pt.diff.data, years = years, pollutants = pollutants, uk.latlon.grid = uk.latlon.grid, mapping.yr = mapping.yr, region = region)
 
 # 3. Using the newly classified GNFR data, place into a netcdf (either existing or new)
 input.to.netcdf(reclassified.data = reclassified.data, years = years, pollutants = pollutants, mapping.yr = mapping.yr)

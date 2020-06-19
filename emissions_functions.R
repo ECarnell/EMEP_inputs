@@ -1,102 +1,91 @@
 # FUNCTIONS FOR CREATION ON EMEP INPUT FILES
 
-NAEI.LL.to.GNFR <- function(years, pollutants, uk.latlon.grid, mapping.yr){
+combine.all.region.data <- function(years, pollutants, uk.latlon.grid, mapping.yr, class, region){
+  
+  if(class == "SNAP"){
+    sectors.to.input <- paste0("S", 1:11)
+    res.crs <- "1km_BNG"}else{
+    sectors.to.input <- c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural")
+    res.crs <- "0.01_LL"
+  }
   
   all.data.list <- list()
   
-  # cycle through every year given, inserting all pollutants into one file for that year
+  # cycle through every year given
   for(year in years){
     
     # for the year, cycle through every given GHG/pollutant
     for(species in pollutants){
   
-      print(paste0(Sys.time(),": Converting SNAP codes to GNFR sectors for ",species," in ",year,"..."))
+      print(paste0(Sys.time(),": Combining point and diffuse data for ",species," ",year," in ",region," as ",class," codes..."))
       
+      # function to combine the point and diffuse data for the given region and classification
       
-  # function to combine the point and diffuse data from NAEI and reclassify to GNFR
-  
-  # reclassification of SNAP to GNFR is not strictly possible so come up with rough method
-  # this table ensure only ONE SNAP sector goes into a GNFR to avoid doubling. 
-  SNAP.GNFR <- data.table(SNAP = c(1,3,4,2,5,6,7,NA,8,NA,9,10,NA,11), 
-                          GNFR = c("A_PublicPower","B_Industry","B_Industry","C_OtherStationaryComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural"),
-                          SEC.ID = c(1,2,2,3,4,5,6,7,8,9,10,11,12,13))
-  
-  
-  # for each GNFR code, call in the diffuse and point data from the correct SNAP
-  # if the GNFR does not have a SNAP, make a blank surface
-  # merge diffuse and point to one surface (EMEP4UK has all data in one input)
-  
-  all.SN.files <- list.files("C:/FastProcessingSam/EMEP_new_grid/", pattern = paste0(species,"_",year,"_S.*\\NAEImap.tif$"))
-  
-  gnfr.st <- stack()
-  
-  for(GN in unique(SNAP.GNFR[,GNFR])){
-    
-    req.snap <- SNAP.GNFR[GNFR == GN, SNAP]
-    
-    # create blank surface is SNAP = NA
-    if(any(is.na(req.snap) ==T)){
+      # all diffuse data
+      #all.diff.files <- list.files(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class), pattern = paste0(species,"_diff_",year,"_",region,".*",mapping.yr,"NAEImap.tif$"), full.names = T)
       
-      diff.SN <- uk.latlon.grid
+      temp.st <- stack()
       
-    }else{
-    
-      ### pre-generated data 
-      # Diffuse#
-      req.files <- all.SN.files[grep(paste0(species,"_",year,"_S",req.snap,".*\\NAEImap.tif$", collapse = "|"), all.SN.files, perl = T)]
-      
-      diff.SN <- stack(paste0("C:/FastProcessingSam/EMEP_new_grid/",req.files))
-      
-    } # end of ifelse for diffuse
-      
-      # Point - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
-      pts <- fread(paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/Emissions_grids_plain/LL/point/",species,"/",year,"/",species,"_pt_ems_",year,"_ukeire_t_LL.csv"))
-      
-      pts.sub <- pts[SNAP %in% c(req.snap, GN)]
-      
-      if(nrow(pts.sub) == 0){
+      for(sec.code in sectors.to.input){
         
-        pt.SN <- uk.latlon.grid
+        # Diffuse data
+        diff.sec <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_",sec.code,"_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
         
-      }else{
+        # Point dtaa - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
+        pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
+        # subset points
+        pts.sub <- pts[get(class) == sec.code]
         
-        pt.SN <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+        # if there are no points, use a blank raster, otherwise rasterize
+        if(nrow(pts.sub) == 0){
+          
+          pt.sec <- uk.latlon.grid
+          
+        }else{
+          
+          pt.sec <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+          
+        } # end of ifelse for points
         
-      } # end of ifelse for points
-      
-      # Combine the points
-      
-      all.SN <- calc(stack(diff.SN, pt.SN), sum, na.rm = T)
-      
-      names(all.SN) <- paste0(SNAP.GNFR[GNFR==GN,SEC.ID][1],"_",GN)
-    
-      gnfr.st <- stack(gnfr.st, all.SN)
+        
+        # Combine the data
+        
+        all.sec <- calc(stack(diff.sec, pt.sec), sum, na.rm = T)
+        
+        names(all.sec) <- paste0(species,"_",year,"_",sec.code)
+        
+        temp.st <- stack(temp.st, all.sec)
       
   
     } # end of SNAP to GNFR combining loop
-  
-  
-  # add the data to the master list
-  all.data.list[[paste0(species,"_",year)]] <- gnfr.st
+      
+      
+      # add the data to the master list
+      all.data.list[[paste0(species,"_",year)]] <- temp.st
    
-  
    } # end of polluatnts/GHGs loop
-  
-    
   
   } # end of year loop
     
   return(all.data.list)
-  print(paste0(Sys.time(),": Processing Complete."))
+  print(paste0(Sys.time(),": Combining Complete."))
   
 }
 
 ##############
 
-check.netcdf.status <- function(reclassified.data, years, pollutants, uk.latlon.grid, mapping.yr){
+check.netcdf.status <- function(pt.diff.data, years, pollutants, uk.latlon.grid, mapping.yr, region){
+  
+  
+  ## function takes output from the combination function above
+  ## it checks for netcdfs of the years and if those pollutants/ghgs are already in them
+  ## if the year doesnt exist, or pollutants/ghgs arent in them, no action
+  ## if the pollutant/ghg exists, asks a question and then subsets the data (or not) based on the response to overwrite or not
   
   # cycle through every year given, checking all netcdfs
   for(year in years){
+    
+    message.vec <- NULL
   
     nc.filename <- paste0("C:/FastProcessingSam/EMEP_new_grid/EMEP4UK_UKems_",year,"_0.01.nc")
     
@@ -108,7 +97,27 @@ check.netcdf.status <- function(reclassified.data, years, pollutants, uk.latlon.
       already.in.netcdf <- pollutants[pollutants %in% names(nc$var)]
       not.in.netcdf <- pollutants[!(pollutants %in% names(nc$var))]
       
-      print(paste0("NetCDF exists for ", year,", but ",not.in.netcdf," data does not; updating .nc file..."))
+      m1 <- paste0("NetCDF already exists for ", year,":\n")
+      
+      if(length(not.in.netcdf) == 0){
+        #m2 <- paste0("    ALL proposed pollutants/GHGs already present.\n")
+        m2 <- NULL
+      }else{
+        m2 <- paste0("    Proposed pollutants/GHGs NOT present: ", not.in.netcdf,"\n")
+      }
+      
+      
+      if(length(not.in.netcdf) == 0){
+        #m2 <- paste0("    ALL proposed pollutants/GHGs already present.\n")
+        m2 <- NULL
+      }else{
+        m2 <- paste0("    Proposed pollutants/GHGs NOT present: ", not.in.netcdf,"\n")
+      }
+      
+      m3 <- paste0("    Proposed pollutants/GHGs ALREADY present:  ",already.in.netcdf,"\n")
+      
+      
+      print()
       
       # ask the question whether you want to 
       x <- readline(paste0(already.in.netcdf," data already exists in ",year," netCDF: do you want to quit (q) or overwrite (o)?")) 
@@ -119,17 +128,26 @@ check.netcdf.status <- function(reclassified.data, years, pollutants, uk.latlon.
       
     }else{
       
-    }
+      m1 <- paste0("No netCDF file exists yet for ", year, " - data NOT subsetted.\n")
   
+      
+    } # end of if else to check pollutants
+
+    
+    
+    message.vec <- c(message.vec, m1)
+      
   
   } # end of year loop
   
   
-}
+} # func
 
 ##############
 
 input.to.netcdf <- function(reclassified.data, years, pollutants, mapping.yr){
+  
+  sectors.to.input <- c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural")
   
   # reclassification of SNAP to GNFR is not strictly possible so come up with rough method
   # this table ensure only ONE SNAP sector goes into a GNFR to avoid doubling. 
@@ -283,7 +301,7 @@ input.to.netcdf <- function(reclassified.data, years, pollutants, mapping.yr){
   } # end of year loop
   
   
-}
+} # func
 
 
 

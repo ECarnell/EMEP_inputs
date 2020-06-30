@@ -1,6 +1,6 @@
 # FUNCTIONS FOR CREATION ON EMEP INPUT FILES
 
-combine.all.region.data <- function(years, pollutants, uk.latlon.grid, mapping.yr, class, region){
+combine.all.region.data <- function(years, pollutants, mapping.yr, class, region){
   
   if(class == "SNAP"){
     sectors.to.input <- paste0("S", 1:11)
@@ -31,7 +31,7 @@ combine.all.region.data <- function(years, pollutants, uk.latlon.grid, mapping.y
         # Diffuse data
         diff.sec <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_",sec.code,"_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
         
-        # Point dtaa - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
+        # Point data - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
         pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
         # subset points
         pts.sub <- pts[get(class) == sec.code]
@@ -74,7 +74,7 @@ combine.all.region.data <- function(years, pollutants, uk.latlon.grid, mapping.y
 
 ##############
 
-check.netcdf.status <- function(pt.diff.data, years, pollutants, uk.latlon.grid, mapping.yr, region){
+check.netcdf.status <- function(pt.diff.data, years, pollutants, mapping.yr, region){
   
   
   ## function takes output from the combination function above
@@ -85,7 +85,7 @@ check.netcdf.status <- function(pt.diff.data, years, pollutants, uk.latlon.grid,
   # cycle through every year given, checking all netcdfs
   for(year in years){
     
-    message.vec <- NULL
+    #message.vec <- NULL
   
     nc.filename <- paste0("C:/FastProcessingSam/EMEP_new_grid/EMEP4UK_UKems_",year,"_0.01.nc")
     
@@ -106,40 +106,27 @@ check.netcdf.status <- function(pt.diff.data, years, pollutants, uk.latlon.grid,
         m2 <- paste0("    Proposed pollutants/GHGs NOT present: ", not.in.netcdf,"\n")
       }
       
+      m3 <- paste0("    Proposed pollutants/GHGs ALREADY present: ",already.in.netcdf,"\n")
       
-      if(length(not.in.netcdf) == 0){
-        #m2 <- paste0("    ALL proposed pollutants/GHGs already present.\n")
-        m2 <- NULL
-      }else{
-        m2 <- paste0("    Proposed pollutants/GHGs NOT present: ", not.in.netcdf,"\n")
-      }
-      
-      m3 <- paste0("    Proposed pollutants/GHGs ALREADY present:  ",already.in.netcdf,"\n")
-      
-      
-      print()
+      print(paste0(cat(m1,m2,m3)))
       
       # ask the question whether you want to 
-      x <- readline(paste0(already.in.netcdf," data already exists in ",year," netCDF: do you want to quit (q) or overwrite (o)?")) 
-      if(x == "q"){stop("Change data to convert to netCDF")}else{}
-      
+      x <- readline(paste0(already.in.netcdf," data already exists in ",year," netCDF: do you want to REMOVE this data from processing (r) or OVERWRITE this data in the netcdf (o)?")) 
+      if(x == "r"){stop("Change data to convert to netCDF")}else{}
       
       nc_close(nc)
+
+      
+      
+            
       
     }else{
       
-      m1 <- paste0("No netCDF file exists yet for ", year, " - data NOT subsetted.\n")
-  
+      print(paste0(Sys.time()," No netCDF file exists for ", year, " - data NOT subsetted."))
       
     } # end of if else to check pollutants
 
-    
-    
-    message.vec <- c(message.vec, m1)
-      
-  
   } # end of year loop
-  
   
 } # func
 

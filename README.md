@@ -15,10 +15,10 @@
 
 2. UK emissions data;
 
-   *
-   *
-   *
-   *
+   * 1km and 0.01&deg emissions surfaces are created for UK & Eire in the 'UK Emissions Model' (https://github.com/NERC-CEH/UK_emissions_model)
+   * Data is processed from the NAEI, MapEire, EMEP and E-PRTR
+   * This workflow takes that data and creates EMEP4UK input files, masked to "Emissions_mask.tif"
+
 
 -----------------------------------------------------------------------------------------------------------------
 

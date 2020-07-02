@@ -19,4 +19,4 @@ print("Creating a 0.01 degree mask for UK terrestrial cells...")
 
 # the emissions need to be masked to terrestrial cells (plus some coastal cells) - Massimo wants EMEP emissions data on the sea
 # the mask is in 0.1 degree, disaggregate to 0.01 so masking can be done
-emis.mask <<- crop(extend(disaggregate(raster("C:/FastProcessingSam/Git_repos/EMEP_inputs/Emissions_mask.tif"), fact=10), uk.latlon.grid), uk.latlon.grid)
+emis.mask <<- crop(extend(disaggregate(raster("N:/dump/EMEP_inputs/Emissions_mask.tif"), fact=10), uk.latlon.grid), uk.latlon.grid)

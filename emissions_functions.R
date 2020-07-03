@@ -59,7 +59,7 @@ check.netcdf.status <- function(years, pollutants, mapping.yr, region){
     
   } # end of year loop
   
-  print(paste0(Sys.time()," Years and pollutants subsetted and returned."))
+  print(paste0(Sys.time()," Years and pollutants subsetted (if needed) and returned."))
   return(all.years.polls)
   
 } # func
@@ -75,6 +75,11 @@ combine.all.region.data <- function(yr.poll.subset, mapping.yr, class, region){
     res.crs <- "0.01_LL"
   }
   
+  ### MASTER TABLE FOR COMBINING ###
+  # this table allows re-direction of data into different sectors in EMEP4UK (e.g. for injection heights)
+  # 03/07/20: currently only for class = GNFR, need to add class = SNAP if wanted
+  #master.input.lookup <- fread(paste0("./lookups/EMEP4UK_sectoral_change_",class,"_lookup.csv"))
+  
   all.data.list <- list()
   
   # cycle through every row in the subsetted data frame
@@ -82,8 +87,7 @@ combine.all.region.data <- function(yr.poll.subset, mapping.yr, class, region){
     
     
     year <- yr.poll.subset[i, years]
-    species <- yr.poll.subset[i, pollutants]
-  
+    species <- yr.poll.subset[i, as.character(pollutants)]
   
   
       print(paste0(Sys.time(),": Combining point and diffuse data for ",species," ",year," in ",region," as ",class," codes..."))
@@ -97,26 +101,83 @@ combine.all.region.data <- function(yr.poll.subset, mapping.yr, class, region){
       
       for(sec.code in sectors.to.input){
         
-        # Diffuse data
-        diff.sec <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_",sec.code,"_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
-        
-        # Point data - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
-        pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
-        # subset points
-        pts.sub <- pts[get(class) == sec.code]
-        
-        # if there are no points, use a blank raster, otherwise rasterize
-        if(nrow(pts.sub) == 0){
+        ### FOR SECTOR A_PublicPower, ONLY use power station point data
+        ### FOR SECTOR B_Industry, TAKE A_PublicPower diffuse surface plus non-power station point data
+        ### FOR all else, use specific surface and point data
+        # currently only intiated for GNFR sectors
+        if(sec.code == "A_PublicPower"){
           
-          pt.sec <- uk.latlon.grid
+          diff.sec <- uk.latlon.grid
+          
+          # Point data - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
+          pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
+          # subset points
+          pts.sub <- pts[get(class) == sec.code & pow.flag == 1]
+          
+          # if there are no points, use a blank raster, otherwise rasterize
+          if(nrow(pts.sub) == 0){
+            
+            pt.sec <- uk.latlon.grid
+            
+          }else{
+            
+            pt.sec <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+            
+          } # end of ifelse for points
+          
+        } else if (sec.code == "B_Industry"){
+          
+          # Diffuse data for Industry AND power
+          diff.secA <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_A_PublicPower_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
+          diff.secB <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_B_Industry_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
+          
+          diff.sec <- calc(stack(diff.secA, diff.secB), sum, na.rm=T)
+          
+          # Point data - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
+          pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
+          # subset points
+          pts.sub <- pts[get(class) == "B_Industry" | get(class) == "A_PublicPower" & is.na(pow.flag)]
+          
+          
+          # if there are no points, use a blank raster, otherwise rasterize
+          if(nrow(pts.sub) == 0){
+            
+            pt.sec <- uk.latlon.grid
+            
+          }else{
+            
+            pt.sec <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+            
+          } # end of ifelse for points
+          
+          
           
         }else{
           
-          pt.sec <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+          # Diffuse data
+          diff.sec <- raster(paste0("./Emissions_grids_plain/LL/",species,"/diffuse/",year,"/rasters_",class,"/",species,"_diff_",year,"_",region,"_",class,"_",sec.code,"_t_",res.crs,"_",mapping.yr,"NAEImap.tif"))
           
-        } # end of ifelse for points
+          # Point data - needs subsetting to SNAP (UK) and GNFR (Eire) and rasterizing
+          pts <- fread(paste0("./Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_",region,"_",class,"_t_LL.csv"))
+          # subset points
+          pts.sub <- pts[get(class) == sec.code]
+          
+          
+          # if there are no points, use a blank raster, otherwise rasterize
+          if(nrow(pts.sub) == 0){
+            
+            pt.sec <- uk.latlon.grid
+            
+          }else{
+            
+            pt.sec <- rasterize(x = pts.sub[,1:2], y = uk.latlon.grid, field = pts.sub[,Emission], fun = 'sum', background=NA)
+            
+          } # end of ifelse for points
+          
+        }
         
-        
+        ########
+       
         # Combine the data
         
         all.sec <- calc(stack(diff.sec, pt.sec), sum, na.rm = T)
@@ -144,7 +205,7 @@ combine.all.region.data <- function(yr.poll.subset, mapping.yr, class, region){
 ##############
 
 
-input.to.netcdf <- function(pt.diff.data, years, pollutants, mapping.yr, class, region, yr.poll.subset){
+input.to.netcdf <- function(combined.data, years, pollutants, mapping.yr, class, region, yr.poll.subset){
   
   
   # cycle through every year given, inserting all pollutants into one file for that year
@@ -194,12 +255,13 @@ input.to.netcdf <- function(pt.diff.data, years, pollutants, mapping.yr, class, 
       for(v in 1:length(variables.to.make)){
         
         fillvalue <- -9999
+        total.ems <- paste0(round(sum(cellStats(combined.data[[paste0(v,"_",year)]], sum))/1000,1)," kt")
         
         assign(paste0(variables.to.make[v],"_vardef"), ncvar_def(name = paste0(variables.to.make[v]), 
                                                                  units = "Mg cell-1 yr-1", 
                                                                  dim = list(dimlon,dimlat,dimtime,dimsecs), 
                                                                  missval = fillvalue,
-                                                                 longname = paste0(variables.to.make[v]," emissions for UK terrestrial domain in ", year),
+                                                                 longname = paste0(variables.to.make[v]," emissions for UK terrestrial domain in ", year, " = ", total.ems),
                                                                  prec = "float",
                                                                  compression=4))
         
@@ -218,7 +280,7 @@ input.to.netcdf <- function(pt.diff.data, years, pollutants, mapping.yr, class, 
         nccurrent <- ncvar_add( nccurrent, var.list[[paste0(v,"_vardef")]] )
         
         # extract the year and pollutant and put in
-        a <- array(flip(pt.diff.data[[paste0(v,"_",year)]],2), dim = c(nlon, nlat, ntime, nsecs ))
+        a <- array(flip(combined.data[[paste0(v,"_",year)]],2), dim = c(nlon, nlat, ntime, nsecs ))
         
         ncvar_put(nccurrent, get(paste0(v,"_vardef")), a)
         
@@ -266,12 +328,13 @@ input.to.netcdf <- function(pt.diff.data, years, pollutants, mapping.yr, class, 
       for(v in 1:length(variables.to.make)){
         
         fillvalue <- -9999
+        total.ems <- paste0(round(sum(cellStats(combined.data[[paste0(variables.to.make[v],"_",year)]], sum))/1000,1)," kt")
         
         assign(paste0(variables.to.make[v],"_vardef"), ncvar_def(name = paste0(variables.to.make[v]), 
                                                        units = "Mg cell-1 yr-1", 
                                                        dim = list(dimlon,dimlat,dimtime,dimsecs), 
                                                        missval = fillvalue,
-                                                       longname = paste0(variables.to.make[v]," emissions for UK terrestrial domain in ", year),
+                                                       longname = paste0(variables.to.make[v]," emissions for UK terrestrial domain in ", year, " = ", total.ems),
                                                        prec = "float",
                                                        compression=4))
         
@@ -290,7 +353,7 @@ input.to.netcdf <- function(pt.diff.data, years, pollutants, mapping.yr, class, 
         
         
         # extract the year and pollutant and put in
-        a <- array(flip(pt.diff.data[[paste0(v,"_",year)]],2), dim = c(nlon, nlat, ntime, nsecs ))
+        a <- array(flip(combined.data[[paste0(v,"_",year)]],2), dim = c(nlon, nlat, ntime, nsecs ))
         
         ncvar_put(ncnew, get(paste0(v,"_vardef")), a)
         
